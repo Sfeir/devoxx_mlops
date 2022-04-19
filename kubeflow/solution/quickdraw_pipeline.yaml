@@ -1,0 +1,502 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  generateName: quickdraw-classifier-
+  annotations: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12, pipelines.kubeflow.org/pipeline_compilation_time: '2022-04-15T14:18:35.430557',
+    pipelines.kubeflow.org/pipeline_spec: '{"description": "A trainer that does end-to-end
+      distributed training for Quickdraw classifier.", "inputs": [{"name": "images_path",
+      "type": "String"}, {"name": "tfrecords_path", "type": "String"}, {"name": "image_validation_path",
+      "type": "String"}, {"name": "tfrecords_validation_path", "type": "String"},
+      {"name": "bucket", "type": "String"}, {"name": "location", "type": "String"},
+      {"name": "project", "type": "String"}, {"name": "training_data", "type": "String"},
+      {"name": "validation_data", "type": "String"}, {"default": "50", "name": "batch_size",
+      "optional": true, "type": "String"}, {"default": "20", "name": "validation_batch_size",
+      "optional": true, "type": "String"}, {"default": "25000", "name": "training_ds_size",
+      "optional": true, "type": "String"}, {"default": "5000", "name": "validation_ds_size",
+      "optional": true, "type": "String"}, {"default": "64", "name": "image_size",
+      "optional": true, "type": "Integer"}, {"default": "64", "name": "img_height",
+      "optional": true, "type": "String"}, {"default": "64", "name": "img_width",
+      "optional": true, "type": "String"}, {"default": "5", "name": "nb_classes",
+      "optional": true, "type": "String"}, {"default": "quickdraw_training", "name":
+      "display_name", "optional": true, "type": "String"}, {"default": "False", "name":
+      "preprocess", "optional": true, "type": "Boolean"}, {"default": "False", "name":
+      "deploy_model", "optional": true, "type": "Boolean"}], "name": "Quickdraw classifier
+      "}'}
+  labels: {pipelines.kubeflow.org/kfp_sdk_version: 1.8.12}
+spec:
+  entrypoint: quickdraw-classifier
+  templates:
+  - name: condition-do-pretraitement-1
+    inputs:
+      parameters:
+      - {name: image_size}
+      - {name: image_validation_path}
+      - {name: images_path}
+      - {name: tfrecords_path}
+      - {name: tfrecords_validation_path}
+    dag:
+      tasks:
+      - name: image-to-tfrecords
+        template: image-to-tfrecords
+        arguments:
+          parameters:
+          - {name: image_size, value: '{{inputs.parameters.image_size}}'}
+          - {name: images_path, value: '{{inputs.parameters.images_path}}'}
+          - {name: tfrecords_path, value: '{{inputs.parameters.tfrecords_path}}'}
+      - name: image-to-tfrecords-2
+        template: image-to-tfrecords-2
+        arguments:
+          parameters:
+          - {name: image_size, value: '{{inputs.parameters.image_size}}'}
+          - {name: image_validation_path, value: '{{inputs.parameters.image_validation_path}}'}
+          - {name: tfrecords_validation_path, value: '{{inputs.parameters.tfrecords_validation_path}}'}
+  - name: createtraningjob
+    container:
+      args: [--training-data, '{{inputs.parameters.training_data}}', --validation-data,
+        '{{inputs.parameters.validation_data}}', --project, '{{inputs.parameters.project}}',
+        --location, '{{inputs.parameters.location}}', --bucket, '{{inputs.parameters.bucket}}',
+        --batch-size, '{{inputs.parameters.batch_size}}', --validation-batch-size,
+        '{{inputs.parameters.validation_batch_size}}', --training-ds-size, '{{inputs.parameters.training_ds_size}}',
+        --validation-ds-size, '{{inputs.parameters.validation_ds_size}}', --img-height,
+        '{{inputs.parameters.img_height}}', --img-width, '{{inputs.parameters.img_width}}',
+        --nb-classes, '{{inputs.parameters.nb_classes}}', --display-name, '{{inputs.parameters.display_name}}',
+        '----output-paths', /tmp/outputs/Output/data]
+      command:
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - "def createTraningJob(training_data,\n                     validation_data,\n\
+        \                     project,\n                     location,\n         \
+        \            bucket,\n                     batch_size = '50',\n          \
+        \           validation_batch_size = '20',\n                     training_ds_size\
+        \ = '25000',\n                     validation_ds_size = '5000',\n        \
+        \             img_height = '255',\n                     img_width = '255',\n\
+        \                     nb_classes = '5',\n                     display_name\
+        \ = 'quickdraw_training'\n                    ):\n    \"\"\"\n    Create the\
+        \ training job into Vertex training and launch it \n    :param training_data:\
+        \  (str) GCS path to the training dataset Tfrecords,\n    :param validation_data:\
+        \ (str) GCS path to the validation dataset Tfrecords,\n    :param project:\
+        \ (str) Name of the Google cloud project,\n    :param location: (str) Training\
+        \ location in vetex (europe-west1,...) ,\n    :param bucket: (str) GCS bucket\
+        \ to store data during the training,\n    :param batch_size: (str) Training\
+        \ Batch size '50',\n    :param validation_batch_size: (str) Validation batch\
+        \ size defaut '20',\n    :param  training_ds_size: (str) training dataset\
+        \ size default 25000,\n    :param  validation_ds_size: (str) validation dataset\
+        \ size default 5000,\n    :param  img_height: (str) image height size default\
+        \ 255,\n    :param  img_width: (str) image widht size default 255,\n    :param\
+        \  nb_classes: (str) number of class default '5',\n    :param  display_name:(str)Vertex\
+        \ job display name default'quickdraw_training'\n    :return: GCS path for\
+        \ the trained model\n    \"\"\"\n\n    from datetime import datetime \n  \
+        \  import google.cloud.aiplatform as aip\n\n    display_job_name = display_name\n\
+        \    staging_bucket = bucket+\"staging/\"+display_job_name\n    model_path\
+        \ = bucket+\"gcs_model_data/\"+display_job_name\n\n    env_var = {'GCS_TRAINING_DATA':\
+        \ training_data,\n               'GCS_VALIDATION_DATA':validation_data,\n\
+        \                'GCS_MODEL_DATA_PATH': model_path\n                }\n\n\
+        \    #flo-test-devoxx/gcs_model_data/quickdraw_training_20220414_071940/model\n\
+        \n    job = aip.CustomPythonPackageTrainingJob(\n        display_name=display_job_name,\n\
+        \        python_package_gcs_uri= 'gs://devoxx_poc/vertex_job_code/quickdraw_classifier-0.0.1.tar.gz',\n\
+        \        python_module_name=\"quickdraw_classifier.training\",\n        container_uri='europe-docker.pkg.dev/vertex-ai/training/tf-gpu.2-8:latest',\n\
+        \        model_serving_container_image_uri='europe-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-8:latest',\n\
+        \        project=project,\n        location=location,\n        staging_bucket=bucket\n\
+        \    )\n\n    CMDARGS = [\n        '--batch_size='+batch_size,\n        '--validation_batch_size='+validation_batch_size,\n\
+        \        '--training_ds_size='+training_ds_size,\n        '--validation_ds_size='+validation_ds_size,\n\
+        \        '--img_height='+img_height,\n        '--img_width='+img_width,\n\
+        \        '--nb_classes='+nb_classes\n    ]\n\n    print(CMDARGS)\n\n    model\
+        \ = job.run(\n        args=CMDARGS,\n        environment_variables=env_var,\n\
+        \        sync=True,\n        replica_count=1,\n        machine_type='n1-standard-8',\n\
+        \        accelerator_type='NVIDIA_TESLA_K80',\n        accelerator_count=1,\n\
+        \        base_output_dir=bucket)\n\n    return model.name\n\ndef _serialize_str(str_value:\
+        \ str) -> str:\n    if not isinstance(str_value, str):\n        raise TypeError('Value\
+        \ \"{}\" has type \"{}\" instead of str.'.format(\n            str(str_value),\
+        \ str(type(str_value))))\n    return str_value\n\nimport argparse\n_parser\
+        \ = argparse.ArgumentParser(prog='CreateTraningJob', description='Create the\
+        \ training job into Vertex training and launch it')\n_parser.add_argument(\"\
+        --training-data\", dest=\"training_data\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--validation-data\", dest=\"validation_data\", type=str,\
+        \ required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--project\"\
+        , dest=\"project\", type=str, required=True, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--location\", dest=\"location\", type=str, required=True,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--bucket\", dest=\"bucket\"\
+        , type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --batch-size\", dest=\"batch_size\", type=str, required=False, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--validation-batch-size\", dest=\"validation_batch_size\"\
+        , type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --training-ds-size\", dest=\"training_ds_size\", type=str, required=False,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--validation-ds-size\"\
+        , dest=\"validation_ds_size\", type=str, required=False, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--img-height\", dest=\"img_height\", type=str, required=False,\
+        \ default=argparse.SUPPRESS)\n_parser.add_argument(\"--img-width\", dest=\"\
+        img_width\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"\
+        --nb-classes\", dest=\"nb_classes\", type=str, required=False, default=argparse.SUPPRESS)\n\
+        _parser.add_argument(\"--display-name\", dest=\"display_name\", type=str,\
+        \ required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\"\
+        , dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n\
+        _output_files = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = createTraningJob(**_parsed_args)\n\
+        \n_outputs = [_outputs]\n\n_output_serializers = [\n    _serialize_str,\n\n\
+        ]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n\
+        \        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n\
+        \        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
+      image: gcr.io/deeplearning-platform-release/tf2-cpu.2-8
+    inputs:
+      parameters:
+      - {name: batch_size}
+      - {name: bucket}
+      - {name: display_name}
+      - {name: img_height}
+      - {name: img_width}
+      - {name: location}
+      - {name: nb_classes}
+      - {name: project}
+      - {name: training_data}
+      - {name: training_ds_size}
+      - {name: validation_batch_size}
+      - {name: validation_data}
+      - {name: validation_ds_size}
+    outputs:
+      artifacts:
+      - {name: createtraningjob-Output, path: /tmp/outputs/Output/data}
+    metadata:
+      annotations: {pipelines.kubeflow.org/task_display_name: Training_Model, pipelines.kubeflow.org/component_spec: '{"description":
+          "Create the training job into Vertex training and launch it", "implementation":
+          {"container": {"args": ["--training-data", {"inputValue": "training_data"},
+          "--validation-data", {"inputValue": "validation_data"}, "--project", {"inputValue":
+          "project"}, "--location", {"inputValue": "location"}, "--bucket", {"inputValue":
+          "bucket"}, {"if": {"cond": {"isPresent": "batch_size"}, "then": ["--batch-size",
+          {"inputValue": "batch_size"}]}}, {"if": {"cond": {"isPresent": "validation_batch_size"},
+          "then": ["--validation-batch-size", {"inputValue": "validation_batch_size"}]}},
+          {"if": {"cond": {"isPresent": "training_ds_size"}, "then": ["--training-ds-size",
+          {"inputValue": "training_ds_size"}]}}, {"if": {"cond": {"isPresent": "validation_ds_size"},
+          "then": ["--validation-ds-size", {"inputValue": "validation_ds_size"}]}},
+          {"if": {"cond": {"isPresent": "img_height"}, "then": ["--img-height", {"inputValue":
+          "img_height"}]}}, {"if": {"cond": {"isPresent": "img_width"}, "then": ["--img-width",
+          {"inputValue": "img_width"}]}}, {"if": {"cond": {"isPresent": "nb_classes"},
+          "then": ["--nb-classes", {"inputValue": "nb_classes"}]}}, {"if": {"cond":
+          {"isPresent": "display_name"}, "then": ["--display-name", {"inputValue":
+          "display_name"}]}}, "----output-paths", {"outputPath": "Output"}], "command":
+          ["sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def createTraningJob(training_data,\n                     validation_data,\n                     project,\n                     location,\n                     bucket,\n                     batch_size
+          = ''50'',\n                     validation_batch_size = ''20'',\n                     training_ds_size
+          = ''25000'',\n                     validation_ds_size = ''5000'',\n                     img_height
+          = ''255'',\n                     img_width = ''255'',\n                     nb_classes
+          = ''5'',\n                     display_name = ''quickdraw_training''\n                    ):\n    \"\"\"\n    Create
+          the training job into Vertex training and launch it \n    :param training_data:  (str)
+          GCS path to the training dataset Tfrecords,\n    :param validation_data:
+          (str) GCS path to the validation dataset Tfrecords,\n    :param project:
+          (str) Name of the Google cloud project,\n    :param location: (str) Training
+          location in vetex (europe-west1,...) ,\n    :param bucket: (str) GCS bucket
+          to store data during the training,\n    :param batch_size: (str) Training
+          Batch size ''50'',\n    :param validation_batch_size: (str) Validation batch
+          size defaut ''20'',\n    :param  training_ds_size: (str) training dataset
+          size default 25000,\n    :param  validation_ds_size: (str) validation dataset
+          size default 5000,\n    :param  img_height: (str) image height size default
+          255,\n    :param  img_width: (str) image widht size default 255,\n    :param  nb_classes:
+          (str) number of class default ''5'',\n    :param  display_name:(str)Vertex
+          job display name default''quickdraw_training''\n    :return: GCS path for
+          the trained model\n    \"\"\"\n\n    from datetime import datetime \n    import
+          google.cloud.aiplatform as aip\n\n    display_job_name = display_name\n    staging_bucket
+          = bucket+\"staging/\"+display_job_name\n    model_path = bucket+\"gcs_model_data/\"+display_job_name\n\n    env_var
+          = {''GCS_TRAINING_DATA'': training_data,\n               ''GCS_VALIDATION_DATA'':validation_data,\n                ''GCS_MODEL_DATA_PATH'':
+          model_path\n                }\n\n    #flo-test-devoxx/gcs_model_data/quickdraw_training_20220414_071940/model\n\n    job
+          = aip.CustomPythonPackageTrainingJob(\n        display_name=display_job_name,\n        python_package_gcs_uri=
+          ''gs://devoxx_poc/vertex_job_code/quickdraw_classifier-0.0.1.tar.gz'',\n        python_module_name=\"quickdraw_classifier.training\",\n        container_uri=''europe-docker.pkg.dev/vertex-ai/training/tf-gpu.2-8:latest'',\n        model_serving_container_image_uri=''europe-docker.pkg.dev/vertex-ai/prediction/tf2-cpu.2-8:latest'',\n        project=project,\n        location=location,\n        staging_bucket=bucket\n    )\n\n    CMDARGS
+          = [\n        ''--batch_size=''+batch_size,\n        ''--validation_batch_size=''+validation_batch_size,\n        ''--training_ds_size=''+training_ds_size,\n        ''--validation_ds_size=''+validation_ds_size,\n        ''--img_height=''+img_height,\n        ''--img_width=''+img_width,\n        ''--nb_classes=''+nb_classes\n    ]\n\n    print(CMDARGS)\n\n    model
+          = job.run(\n        args=CMDARGS,\n        environment_variables=env_var,\n        sync=True,\n        replica_count=1,\n        machine_type=''n1-standard-8'',\n        accelerator_type=''NVIDIA_TESLA_K80'',\n        accelerator_count=1,\n        base_output_dir=bucket)\n\n    return
+          model.name\n\ndef _serialize_str(str_value: str) -> str:\n    if not isinstance(str_value,
+          str):\n        raise TypeError(''Value \"{}\" has type \"{}\" instead of
+          str.''.format(\n            str(str_value), str(type(str_value))))\n    return
+          str_value\n\nimport argparse\n_parser = argparse.ArgumentParser(prog=''CreateTraningJob'',
+          description=''Create the training job into Vertex training and launch it'')\n_parser.add_argument(\"--training-data\",
+          dest=\"training_data\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--validation-data\",
+          dest=\"validation_data\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--project\",
+          dest=\"project\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--location\",
+          dest=\"location\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--bucket\",
+          dest=\"bucket\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--batch-size\",
+          dest=\"batch_size\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--validation-batch-size\",
+          dest=\"validation_batch_size\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--training-ds-size\",
+          dest=\"training_ds_size\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--validation-ds-size\",
+          dest=\"validation_ds_size\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--img-height\",
+          dest=\"img_height\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--img-width\",
+          dest=\"img_width\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--nb-classes\",
+          dest=\"nb_classes\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"--display-name\",
+          dest=\"display_name\", type=str, required=False, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\",
+          dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files
+          = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = createTraningJob(**_parsed_args)\n\n_outputs
+          = [_outputs]\n\n_output_serializers = [\n    _serialize_str,\n\n]\n\nimport
+          os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except
+          OSError:\n        pass\n    with open(output_file, ''w'') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"],
+          "image": "gcr.io/deeplearning-platform-release/tf2-cpu.2-8"}}, "inputs":
+          [{"description": "(str) GCS path to the training dataset Tfrecords,", "name":
+          "training_data", "type": "String"}, {"description": "(str) GCS path to the
+          validation dataset Tfrecords,", "name": "validation_data", "type": "String"},
+          {"description": "(str) Name of the Google cloud project,", "name": "project",
+          "type": "String"}, {"description": "(str) Training location in vetex (europe-west1,...)
+          ,", "name": "location", "type": "String"}, {"description": "(str) GCS bucket
+          to store data during the training,", "name": "bucket", "type": "String"},
+          {"default": "50", "description": "(str) Training Batch size ''50'',", "name":
+          "batch_size", "optional": true, "type": "String"}, {"default": "20", "description":
+          "(str) Validation batch size defaut ''20'',", "name": "validation_batch_size",
+          "optional": true, "type": "String"}, {"default": "25000", "description":
+          "(str) training dataset size default 25000,", "name": "training_ds_size",
+          "optional": true, "type": "String"}, {"default": "5000", "description":
+          "(str) validation dataset size default 5000,", "name": "validation_ds_size",
+          "optional": true, "type": "String"}, {"default": "255", "description": "(str)
+          image height size default 255,", "name": "img_height", "optional": true,
+          "type": "String"}, {"default": "255", "description": "(str) image widht
+          size default 255,", "name": "img_width", "optional": true, "type": "String"},
+          {"default": "5", "description": "(str) number of class default ''5'',",
+          "name": "nb_classes", "optional": true, "type": "String"}, {"default": "quickdraw_training",
+          "description": "(str)Vertex job display name default''quickdraw_training''",
+          "name": "display_name", "optional": true, "type": "String"}], "name": "CreateTraningJob",
+          "outputs": [{"name": "Output", "type": "String"}]}', pipelines.kubeflow.org/component_ref: '{}',
+        pipelines.kubeflow.org/arguments.parameters: '{"batch_size": "{{inputs.parameters.batch_size}}",
+          "bucket": "{{inputs.parameters.bucket}}", "display_name": "{{inputs.parameters.display_name}}",
+          "img_height": "{{inputs.parameters.img_height}}", "img_width": "{{inputs.parameters.img_width}}",
+          "location": "{{inputs.parameters.location}}", "nb_classes": "{{inputs.parameters.nb_classes}}",
+          "project": "{{inputs.parameters.project}}", "training_data": "{{inputs.parameters.training_data}}",
+          "training_ds_size": "{{inputs.parameters.training_ds_size}}", "validation_batch_size":
+          "{{inputs.parameters.validation_batch_size}}", "validation_data": "{{inputs.parameters.validation_data}}",
+          "validation_ds_size": "{{inputs.parameters.validation_ds_size}}"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: image-to-tfrecords
+    container:
+      args: []
+      command: [python3, /preprocess.py, --input-path, '{{inputs.parameters.images_path}}',
+        --output-path, '{{inputs.parameters.tfrecords_path}}', --target-size, '{{inputs.parameters.image_size}}']
+      image: gcr.io/sfeir-data/image_to_tfrecords
+    inputs:
+      parameters:
+      - {name: image_size}
+      - {name: images_path}
+      - {name: tfrecords_path}
+    metadata:
+      annotations: {pipelines.kubeflow.org/task_display_name: convert_training_data,
+        pipelines.kubeflow.org/component_spec: '{"description": "Transform image data
+          to TfRecords.", "implementation": {"container": {"command": ["python3",
+          "/preprocess.py", "--input-path", {"inputValue": "images path"}, "--output-path",
+          {"inputValue": "tfrecords path"}, "--target-size", {"inputValue": "target
+          size"}], "image": "gcr.io/sfeir-data/image_to_tfrecords"}}, "inputs": [{"description":
+          "GCS path for images files", "name": "images path", "type": "String"}, {"description":
+          "GCS path for tfrecords files", "name": "tfrecords path", "type": "String"},
+          {"description": "Size of the training images", "name": "target size", "type":
+          "Integer"}], "name": "image_to_tfrecords"}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "8af8f0a54b26d657dafbb0aeb1bdae9b3b1f575ace211e13e478c1b4a6effe3a"}', pipelines.kubeflow.org/arguments.parameters: '{"images
+          path": "{{inputs.parameters.images_path}}", "target size": "{{inputs.parameters.image_size}}",
+          "tfrecords path": "{{inputs.parameters.tfrecords_path}}"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: image-to-tfrecords-2
+    container:
+      args: []
+      command: [python3, /preprocess.py, --input-path, '{{inputs.parameters.image_validation_path}}',
+        --output-path, '{{inputs.parameters.tfrecords_validation_path}}', --target-size,
+        '{{inputs.parameters.image_size}}']
+      image: gcr.io/sfeir-data/image_to_tfrecords
+    inputs:
+      parameters:
+      - {name: image_size}
+      - {name: image_validation_path}
+      - {name: tfrecords_validation_path}
+    metadata:
+      annotations: {pipelines.kubeflow.org/task_display_name: convert_validation_data,
+        pipelines.kubeflow.org/component_spec: '{"description": "Transform image data
+          to TfRecords.", "implementation": {"container": {"command": ["python3",
+          "/preprocess.py", "--input-path", {"inputValue": "images path"}, "--output-path",
+          {"inputValue": "tfrecords path"}, "--target-size", {"inputValue": "target
+          size"}], "image": "gcr.io/sfeir-data/image_to_tfrecords"}}, "inputs": [{"description":
+          "GCS path for images files", "name": "images path", "type": "String"}, {"description":
+          "GCS path for tfrecords files", "name": "tfrecords path", "type": "String"},
+          {"description": "Size of the training images", "name": "target size", "type":
+          "Integer"}], "name": "image_to_tfrecords"}', pipelines.kubeflow.org/component_ref: '{"digest":
+          "8af8f0a54b26d657dafbb0aeb1bdae9b3b1f575ace211e13e478c1b4a6effe3a"}', pipelines.kubeflow.org/arguments.parameters: '{"images
+          path": "{{inputs.parameters.image_validation_path}}", "target size": "{{inputs.parameters.image_size}}",
+          "tfrecords path": "{{inputs.parameters.tfrecords_validation_path}}"}'}
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+  - name: preprocess-flag
+    container:
+      args: [--preprocess, '{{inputs.parameters.preprocess}}', '----output-paths',
+        /tmp/outputs/Output/data]
+      command:
+      - sh
+      - -ec
+      - |
+        program_path=$(mktemp)
+        printf "%s" "$0" > "$program_path"
+        python3 -u "$program_path" "$@"
+      - |
+        def preprocess_flag(preprocess):
+            """
+            Print arguments
+            """
+            print("Preprocess ",preprocess)
+            return preprocess
+
+        def _deserialize_bool(s) -> bool:
+            from distutils.util import strtobool
+            return strtobool(s) == 1
+
+        def _serialize_bool(bool_value: bool) -> str:
+            if isinstance(bool_value, str):
+                return bool_value
+            if not isinstance(bool_value, bool):
+                raise TypeError('Value "{}" has type "{}" instead of bool.'.format(
+                    str(bool_value), str(type(bool_value))))
+            return str(bool_value)
+
+        import argparse
+        _parser = argparse.ArgumentParser(prog='Preprocess flag', description='Print arguments')
+        _parser.add_argument("--preprocess", dest="preprocess", type=_deserialize_bool, required=True, default=argparse.SUPPRESS)
+        _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
+        _parsed_args = vars(_parser.parse_args())
+        _output_files = _parsed_args.pop("_output_paths", [])
+
+        _outputs = preprocess_flag(**_parsed_args)
+
+        _outputs = [_outputs]
+
+        _output_serializers = [
+            _serialize_bool,
+
+        ]
+
+        import os
+        for idx, output_file in enumerate(_output_files):
+            try:
+                os.makedirs(os.path.dirname(output_file))
+            except OSError:
+                pass
+            with open(output_file, 'w') as f:
+                f.write(_output_serializers[idx](_outputs[idx]))
+      image: python:3.7
+    inputs:
+      parameters:
+      - {name: preprocess}
+    outputs:
+      parameters:
+      - name: preprocess-flag-Output
+        valueFrom: {path: /tmp/outputs/Output/data}
+      artifacts:
+      - {name: preprocess-flag-Output, path: /tmp/outputs/Output/data}
+    metadata:
+      labels:
+        pipelines.kubeflow.org/kfp_sdk_version: 1.8.12
+        pipelines.kubeflow.org/pipeline-sdk-type: kfp
+        pipelines.kubeflow.org/enable_caching: "true"
+      annotations: {pipelines.kubeflow.org/component_spec: '{"description": "Print
+          arguments", "implementation": {"container": {"args": ["--preprocess", {"inputValue":
+          "preprocess"}, "----output-paths", {"outputPath": "Output"}], "command":
+          ["sh", "-ec", "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3
+          -u \"$program_path\" \"$@\"\n", "def preprocess_flag(preprocess):\n    \"\"\"\n    Print
+          arguments\n    \"\"\"\n    print(\"Preprocess \",preprocess)\n    return
+          preprocess\n\ndef _deserialize_bool(s) -> bool:\n    from distutils.util
+          import strtobool\n    return strtobool(s) == 1\n\ndef _serialize_bool(bool_value:
+          bool) -> str:\n    if isinstance(bool_value, str):\n        return bool_value\n    if
+          not isinstance(bool_value, bool):\n        raise TypeError(''Value \"{}\"
+          has type \"{}\" instead of bool.''.format(\n            str(bool_value),
+          str(type(bool_value))))\n    return str(bool_value)\n\nimport argparse\n_parser
+          = argparse.ArgumentParser(prog=''Preprocess flag'', description=''Print
+          arguments'')\n_parser.add_argument(\"--preprocess\", dest=\"preprocess\",
+          type=_deserialize_bool, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\",
+          dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files
+          = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = preprocess_flag(**_parsed_args)\n\n_outputs
+          = [_outputs]\n\n_output_serializers = [\n    _serialize_bool,\n\n]\n\nimport
+          os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except
+          OSError:\n        pass\n    with open(output_file, ''w'') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"],
+          "image": "python:3.7"}}, "inputs": [{"name": "preprocess", "type": "Boolean"}],
+          "name": "Preprocess flag", "outputs": [{"name": "Output", "type": "Boolean"}]}',
+        pipelines.kubeflow.org/component_ref: '{}', pipelines.kubeflow.org/arguments.parameters: '{"preprocess":
+          "{{inputs.parameters.preprocess}}"}'}
+  - name: quickdraw-classifier
+    inputs:
+      parameters:
+      - {name: batch_size}
+      - {name: bucket}
+      - {name: display_name}
+      - {name: image_size}
+      - {name: image_validation_path}
+      - {name: images_path}
+      - {name: img_height}
+      - {name: img_width}
+      - {name: location}
+      - {name: nb_classes}
+      - {name: preprocess}
+      - {name: project}
+      - {name: tfrecords_path}
+      - {name: tfrecords_validation_path}
+      - {name: training_data}
+      - {name: training_ds_size}
+      - {name: validation_batch_size}
+      - {name: validation_data}
+      - {name: validation_ds_size}
+    dag:
+      tasks:
+      - name: condition-do-pretraitement-1
+        template: condition-do-pretraitement-1
+        when: '"{{tasks.preprocess-flag.outputs.parameters.preprocess-flag-Output}}"
+          == "True"'
+        dependencies: [preprocess-flag]
+        arguments:
+          parameters:
+          - {name: image_size, value: '{{inputs.parameters.image_size}}'}
+          - {name: image_validation_path, value: '{{inputs.parameters.image_validation_path}}'}
+          - {name: images_path, value: '{{inputs.parameters.images_path}}'}
+          - {name: tfrecords_path, value: '{{inputs.parameters.tfrecords_path}}'}
+          - {name: tfrecords_validation_path, value: '{{inputs.parameters.tfrecords_validation_path}}'}
+      - name: createtraningjob
+        template: createtraningjob
+        dependencies: [condition-do-pretraitement-1]
+        arguments:
+          parameters:
+          - {name: batch_size, value: '{{inputs.parameters.batch_size}}'}
+          - {name: bucket, value: '{{inputs.parameters.bucket}}'}
+          - {name: display_name, value: '{{inputs.parameters.display_name}}'}
+          - {name: img_height, value: '{{inputs.parameters.img_height}}'}
+          - {name: img_width, value: '{{inputs.parameters.img_width}}'}
+          - {name: location, value: '{{inputs.parameters.location}}'}
+          - {name: nb_classes, value: '{{inputs.parameters.nb_classes}}'}
+          - {name: project, value: '{{inputs.parameters.project}}'}
+          - {name: training_data, value: '{{inputs.parameters.training_data}}'}
+          - {name: training_ds_size, value: '{{inputs.parameters.training_ds_size}}'}
+          - {name: validation_batch_size, value: '{{inputs.parameters.validation_batch_size}}'}
+          - {name: validation_data, value: '{{inputs.parameters.validation_data}}'}
+          - {name: validation_ds_size, value: '{{inputs.parameters.validation_ds_size}}'}
+      - name: preprocess-flag
+        template: preprocess-flag
+        arguments:
+          parameters:
+          - {name: preprocess, value: '{{inputs.parameters.preprocess}}'}
+  arguments:
+    parameters:
+    - {name: images_path}
+    - {name: tfrecords_path}
+    - {name: image_validation_path}
+    - {name: tfrecords_validation_path}
+    - {name: bucket}
+    - {name: location}
+    - {name: project}
+    - {name: training_data}
+    - {name: validation_data}
+    - {name: batch_size, value: '50'}
+    - {name: validation_batch_size, value: '20'}
+    - {name: training_ds_size, value: '25000'}
+    - {name: validation_ds_size, value: '5000'}
+    - {name: image_size, value: '64'}
+    - {name: img_height, value: '64'}
+    - {name: img_width, value: '64'}
+    - {name: nb_classes, value: '5'}
+    - {name: display_name, value: quickdraw_training}
+    - name: preprocess
+      value: "False"
+    - name: deploy_model
+      value: "False"
+  serviceAccountName: pipeline-runner

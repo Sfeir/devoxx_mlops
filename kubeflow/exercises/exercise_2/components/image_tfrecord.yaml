@@ -1,0 +1,18 @@
+name: image_to_tfrecords
+description: Transform image data to TfRecords.
+
+inputs:
+- {name: images path, type: String, description: 'GCS path for images files'}
+##TODO add other parameters 
+
+implementation:
+  container:
+    image: gcr.io/sfeir-data/image_to_tfrecords
+    command: [
+      python3, 
+      # Path of the program inside the container
+      /preprocess.py,
+      --input-path,
+      {inputValue: images path},
+     ##TODO add other parameters 
+    ]
