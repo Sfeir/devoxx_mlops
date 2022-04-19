@@ -8,7 +8,7 @@ inputs:
 
 implementation:
   container:
-    image: gcr.io/sfeir-data/image_to_tfrecords
+    image: gcr.io/par-devoxx-sfeir/image_to_tfrecords
     command: [
       python3, 
       # Path of the program inside the container
