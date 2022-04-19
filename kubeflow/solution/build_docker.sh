@@ -1,5 +1,5 @@
 #!/bin/bash -e
-image_name=gcr.io/sfeir-data/image_to_tfrecords
+image_name=gcr.io/par-devoxx-sfeir/image_to_tfrecords
 image_tag=latest
 full_image_name=${image_name}:${image_tag}
 

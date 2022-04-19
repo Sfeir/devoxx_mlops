@@ -121,7 +121,7 @@ def write_dataset(dataset, filepath):
             for i in range(shard_size):
                 example = to_tfrecord(image.numpy()[i], label.numpy()[i])
                 tf_writer.write(example.SerializeToString())
-            print("Wrote file {} containing {} records".format(filename, shard_size))
+            print(f'Wrote file {filename} containing {shard_size} records')
             print(f'Wrote file at {datetime.datetime.now().strftime("%H:%M:%S.%f")}')
 
 
